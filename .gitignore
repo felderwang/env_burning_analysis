@@ -1,0 +1,7 @@
+#ignore datas
+/datas/*
+/after_manage/*
+
+#ignore rar
+*.rar
+

@@ -2,6 +2,7 @@ import matplotlib
 matplotlib.use('agg')
 import pandas as pd
 import numpy as np
+import os
 import time
 from time import strptime
 from datetime import datetime
@@ -92,41 +93,100 @@ def merge_company_list(prev_company_list, cur_company_list, mode=0):
     ret_company_list = [ret_company_dic, ret_df]
     return ret_company_list
 
-def screen_filter(company_dict, table_column_dict):
+def screen_filter(company_dict, table_column_dict, mode=None, selected_list=None, largest_per=0.05, smallest_per=0.05):
+    '''
+    mode = 0:
+        autoly by month
+    mode = 1:
+        by selected month single year
+        selected_list :[
+            [month1, month2, month3],
+            [month4, month5],...
+        ]
+    mode = 2:
+        by selected month multiply year
+    '''
     print(f'Start screen and filter!')
+    def linear_inter(np_sr):
+        '''
+        这部分是使用置信区间筛选，由于数据分布问题，未采用。
+        new_np = np_sr[np_sr!=0]
+        low, high = mean_confidence_interval(new_np)
+        new_np[new_np<low]=0
+        new_np[new_np>high]=0
+        total_size = np.size(new_np)
+        in_confidence_size = np.size(new_np[new_np!=0])
+        print(f'count {column} : {in_confidence_size} / {total_size} = {(in_confidence_size/total_size*100):.3f} %')
+        '''
+        '''
+        线性插值
+        '''
+        np_sr = df[column].to_numpy()
+        np_sr[np_sr<0.0] = 0.0
+        inter_array = np.arange(len(np_sr))
+        if np_sr[0]==0:
+            # inter_sr = np.interp(inter_array, np.concatenate((np.array([0]),inter_array[np_sr!=0])), np.concatenate((np.array([0]), np_sr[np_sr!=0]))) 
+            if column == table_column_dict['flow']:
+                np_sr[0] = 1
+            else:
+                np_sr[0] = 1e-5
+        inter_sr = np.interp(inter_array, inter_array[np_sr!=0], np_sr[np_sr!=0])
+        return inter_sr
+
+
     for key, value in company_dict.items():
         df = value[1]
         column_list = [table_column_dict['flow'],table_column_dict['pm'], table_column_dict['nox'], table_column_dict['so2'], 'pm_by_factor', 'nox_by_factor', 'so2_by_factor']
         for column in column_list:
             np_sr = df[column].to_numpy()
-            '''
-            这部分是使用置信区间筛选，由于数据分布问题，未采用。
-            new_np = np_sr[np_sr!=0]
-            low, high = mean_confidence_interval(new_np)
-            new_np[new_np<low]=0
-            new_np[new_np>high]=0
-            total_size = np.size(new_np)
-            in_confidence_size = np.size(new_np[new_np!=0])
-            print(f'count {column} : {in_confidence_size} / {total_size} = {(in_confidence_size/total_size*100):.3f} %')
-            '''
-
-            '''
-            线性插值
-            '''
-            inter_array = np.arange(len(np_sr))
-            if np_sr[0]==0:
-                # inter_sr = np.interp(inter_array, np.concatenate((np.array([0]),inter_array[np_sr!=0])), np.concatenate((np.array([0]), np_sr[np_sr!=0]))) 
-                if column == table_column_dict['flow']:
-                    np_sr[0] = 1
-                else:
-                    np_sr[0] = 1e-5
-            # else: 
-            inter_sr = np.interp(inter_array, inter_array[np_sr!=0], np_sr[np_sr!=0])
-
+            inter_sr = linear_inter(np_sr)
             df[column] = pd.Series(inter_sr)
+        # delete flow
+        column_list = [table_column_dict['pm'], table_column_dict['nox'], table_column_dict['so2'], 'pm_by_factor', 'nox_by_factor', 'so2_by_factor']
+
+        if mode is not None:
+            # def set_top_zero(sub_df, largest_per, smallest_per, column_list):
+            #     largest_numbers = int(len(sub_df.index)*largest_per)
+            #     smallest_numbers = int(len(sub_df.index)*smallest_per)
+            #     for column in column_list:
+            #         sub_df[column].mask(sub_df[column].isin(sub_df[column].nsmallest(smallest_numbers)), other=0, inplace=True)
+            #         sub_df[column].mask(sub_df[column].isin(sub_df[column].nlargest(largest_numbers)), other=0, inplace=True)
+            df['year'] = df[table_column_dict['monitor_time']].dt.year
+            df['month'] = df[table_column_dict['monitor_time']].dt.month
+            year_list = pd.unique(df['year'])
+            month_list = pd.unique(df['month'])
+            if mode == 0:
+                # print('refilter autoly by month')
+                for year in year_list:
+                    for month in month_list:
+                        sub_df = df.loc[(df['year']==year) & (df['month']==month)].copy()
+                        largest_numbers = int(len(sub_df.index)*largest_per)
+                        smallest_numbers = int(len(sub_df.index)*smallest_per)
+                        for column in column_list:
+                            sub_df[column].mask(sub_df[column].isin(sub_df[column].nsmallest(smallest_numbers)), other=0, inplace=True)
+                            sub_df[column].mask(sub_df[column].isin(sub_df[column].nlargest(largest_numbers)), other=0, inplace=True)
+                            df.loc[(df['year']==year) & (df['month']==month), column]=sub_df
+
+            if mode == 1:
+                print('refilter by month single year')
+                for year in year_list:
+                    for months in selected_list:
+                        sub_df = df.loc[df['year']==year & df['month'].isin(months)]
+                        sub_df = df.loc[(df['year']==year) & (df['month']==month)].copy()
+                        largest_numbers = int(len(sub_df.index)*largest_per)
+                        smallest_numbers = int(len(sub_df.index)*smallest_per)
+                        for column in column_list:
+                            sub_df[column].mask(sub_df[column].isin(sub_df[column].nsmallest(smallest_numbers)), other=0, inplace=True)
+                            sub_df[column].mask(sub_df[column].isin(sub_df[column].nlargest(largest_numbers)), other=0, inplace=True)
+                            df.loc[(df['year']==year) & (df['month']==month), column]=sub_df
+        for column in column_list:
+            np_sr = df[column].to_numpy()
+            inter_sr = linear_inter(np_sr)
+            df[column] = pd.Series(inter_sr)
+        df.drop(columns=['year', 'month'], inplace=True)
         value[1] = df
         
-def compute_inventory(company_dict, table_column_dict, out_dir):
+def compute_inventory(company_dict, table_column_dict, out_dir, out_version):
     print(f'Start compute output inventory!')
     '''
     按照计算公式计算
@@ -154,7 +214,9 @@ def compute_inventory(company_dict, table_column_dict, out_dir):
         df.drop(columns=['pm_by_factor', 'so2_by_factor', 'nox_by_factor'], inplace=True)
 
         value[1] = df
-        save_name = out_dir +str(key)+'.xlsx'
+        if not os.path.exists(out_dir):
+            os.mkdir(out_dir)
+        save_name = out_dir +str(key)+str(out_version)+'.xlsx'
         value[1].to_excel(save_name, index=None)
         print(f'output {save_name}')
 
@@ -172,10 +234,12 @@ def main(args):
     burn_type_dict = json_file['burn_type_dict']
     flow_exception_name_list = json_file['flow_exception_name_list']
     out_dir = json_file['out_dir']
+    out_version = json_file['out_version']
     start_time_list = json_file['start_time_list']
     end_time_list = json_file['end_time_list']
     time_format = json_file['time_format']
     time_freq = json_file['time_freq']
+    # print(f'file_list:{file_list}, out_dir:{out_dir}, out_version:{out_version}')
     
     '''
     company_dict 用于存放公司及其 pandas.DataFrame。其形式为
@@ -264,7 +328,9 @@ def main(args):
             subdf = subdf.reset_index()
             subdf = subdf.rename(columns={'index':table_column_dict['monitor_time']})
 
-            subdf[table_column_dict['monitor_time']] = subdf[table_column_dict['monitor_time']].dt.strftime(time_format)
+            subdf[table_column_dict['monitor_time']] = pd.to_datetime(subdf[table_column_dict['monitor_time']], format=time_format)
+
+            # subdf[table_column_dict['monitor_time']] = subdf[table_column_dict['monitor_time']].dt.strftime(time_format)
 
             '''
 
@@ -279,10 +345,10 @@ def main(args):
                 company_dict[company_name] = merge_company_list(
                     company_dict[company_name], company_list)
     # 清洗与填补
-    screen_filter(company_dict, table_column_dict)
+    screen_filter(company_dict, table_column_dict, mode=0)
 
     # 计算与生成处理后文件
-    compute_inventory(company_dict, table_column_dict, out_dir)
+    compute_inventory(company_dict, table_column_dict, out_dir, out_version)
 
 if __name__ == '__main__':
     args = parse_args()

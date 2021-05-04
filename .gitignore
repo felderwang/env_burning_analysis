@@ -2,6 +2,8 @@
 /datas/*
 /after_manage/*
 
+/prac/*
+
 #ignore rar
 *.rar
 

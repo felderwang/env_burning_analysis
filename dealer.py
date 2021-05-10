@@ -230,6 +230,7 @@ def main(args):
         json_file = json.load(f)
     company_name_list = json_file['company_name_list']
     file_list = json_file['file_list']
+    company_burning_info_path = json_file['company_burning_info_path'] 
     table_column_dict = json_file['table_column_dict']
     burn_type_dict = json_file['burn_type_dict']
     flow_exception_name_list = json_file['flow_exception_name_list']
@@ -256,7 +257,21 @@ def main(args):
 
     '''
     company_dict = {}
-    
+
+    print(f'reading burning info from:{company_burning_info_path}')
+    company_burning_df = pd.read_excel(company_burning_info_path)
+
+    smoke_burning_dict_total = {}
+    for index, row in company_burning_df.iterrows():
+        cp_name = row[table_column_dict['company_name']]
+        smoke_burning_dict = {
+            'theory_smoke' : float(row[table_column_dict['theory_smoke']]),
+            'year_burning' : float(row[table_column_dict['year_burning']]),
+            'fuel_type' : row[table_column_dict['fuel_type']]
+        }
+        smoke_burning_dict_total[cp_name] = smoke_burning_dict
+        
+
     for file_index, filename in enumerate(file_list):
         '''
         解析源文件中，将不同公司名的数据分隔开，放到 df_list 中，之后一一访问处理。
@@ -277,11 +292,12 @@ def main(args):
         for subdf in df_list:
             subdf=subdf.reset_index(drop=True)
             company_name = subdf[table_column_dict['company_name']][0]
-
-            smoke_burning_dict = {
-                'theory_smoke': float(subdf[table_column_dict['theory_smoke']][0]),
-                'year_burning': float(subdf[table_column_dict['year_burning']][0]),
-            }
+            smoke_burning_dict = smoke_burning_dict_total[company_name]
+            # smoke_burning_dict = {
+            #     'theory_smoke': float(subdf[table_column_dict['theory_smoke']][0]),
+            #     'year_burning': float(subdf[table_column_dict['year_burning']][0]),
+            #     'fuel_type':subdf[table_column_dict['fuel_type']][0],
+            # }
 
             '''
             由于后续 groupby 操作，会把燃烧类型抹去，因此先根据燃烧类型，将乘了系数之后的污染物记录。
@@ -289,7 +305,8 @@ def main(args):
             'so2_by_factor' = 'so2' * factor
             'nox_by_factor' = 'nox' * factor
             '''
-            subdf['burn_type_factor']=subdf[table_column_dict['fuel_type']].apply(lambda x: burn_type_dict[x])
+            # subdf['burn_type_factor']=subdf[table_column_dict['fuel_type']].apply(lambda x: burn_type_dict[x])
+            subdf['burn_type_factor'] = float(burn_type_dict[smoke_burning_dict['fuel_type']])
 
             subdf[['pm_by_factor', 'so2_by_factor', 'nox_by_factor']]=subdf[[table_column_dict['pm'], table_column_dict['so2'], table_column_dict['nox']]].multiply(subdf['burn_type_factor'], axis='index')
 
@@ -305,8 +322,9 @@ def main(args):
             将时间相同的项合并，各项相加。
             由于时间的格式，不能直接 groupby，因此将其转换为数字形式的timestamp, 然后合并。合并完了再抓换回来。
             '''
-            subdf.drop(columns=[table_column_dict['company_name'],
-                       table_column_dict['theory_smoke'],table_column_dict['fuel_type'], 'burn_type_factor'], inplace=True)
+            # subdf.drop(columns=[table_column_dict['company_name'],table_column_dict['theory_smoke'],table_column_dict['fuel_type'], 'burn_type_factor'], inplace=True)
+            subdf.drop(columns=[table_column_dict['company_name'], 'burn_type_factor'], inplace=True)
+                       
            
             subdf[table_column_dict['monitor_time']] = subdf[table_column_dict['monitor_time']].apply(
                 lambda x: convert_time2num(x, time_format))
@@ -345,7 +363,7 @@ def main(args):
                 company_dict[company_name] = merge_company_list(
                     company_dict[company_name], company_list)
     # 清洗与填补
-    screen_filter(company_dict, table_column_dict, mode=0)
+    screen_filter(company_dict, table_column_dict, mode=0, largest_per=0.05, smallest_per=0.05)
 
     # 计算与生成处理后文件
     compute_inventory(company_dict, table_column_dict, out_dir, out_version)

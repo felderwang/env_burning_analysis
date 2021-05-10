@@ -18,7 +18,7 @@ def parse_args():
     return args
 
 def main(args):
-    crt_from_bg = False
+    crt_from_bg = True
     if crt_from_bg:
         json_name = args.json_name
         print(json_name)
@@ -37,6 +37,7 @@ def main(args):
         #     fsr.write(str(sr))
         #     fsr.close()
         sr.to_excel('./company_name_list.xlsx')
+
     df = pd.read_excel('./company_name_list.xlsx')
     jd = json.dumps(df['企业名称'].astype(str).values.tolist(), ensure_ascii=False)
     print(jd)

@@ -1,6 +1,12 @@
 By FelderWang, whydf@outlook.com
-## 总体介绍 
+
+## 总体介绍
+
 这是分析的1.0版本，基本功能都已经完成了。还有一些代码整理的工作，以及部分辅助功能待实现。
+
+### version 3.0 (2021.05.10)
+
+输入文件分为两部分， 一个是工厂排放量，另一个是工厂的年燃量、理论烟气量及燃料类型，非常简单
 
 ## 结构说明
 
@@ -19,14 +25,17 @@ By FelderWang, whydf@outlook.com
 * "flow_exception_name_list"：在给的 `9-12.xlsx` 中，流量该列，有的值是 `无`，需要先将其转换为 `0`。当然也可以直接改源 excel 文件中的值。
 
 ## 运行方法
+
 先将所需数据在`datas.json`中修改好。然后执行：
 
 `python dealer.py`
 
 ## Requirement
+
 建议使用 anaconda 管理 Python
 
 以下为所需包，具体视平台而定
+
 * pandas
 * numpy
 * scipy

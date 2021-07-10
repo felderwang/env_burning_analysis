@@ -3,7 +3,7 @@
 /after_manage/*
 
 /prac/*
-
+/__pycache__/*
 #ignore rar
 *.rar
 

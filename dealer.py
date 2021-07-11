@@ -263,7 +263,8 @@ def screen_filter(company_dict, table_column_dict, out_dir, out_version, mode=No
         #     inter_sr = linear_inter(np_sr)
         #     df[column] = pd.Series(inter_sr)
         # delete flow
-        column_list = [table_column_dict['pm'], table_column_dict['nox'], table_column_dict['so2'], 'pm_by_factor', 'nox_by_factor', 'so2_by_factor']
+        # column_list = [table_column_dict['pm'], table_column_dict['nox'], table_column_dict['so2'], 'pm_by_factor', 'nox_by_factor', 'so2_by_factor']
+        column_list = [table_column_dict['pm'], table_column_dict['nox'], table_column_dict['so2']]
         filter_column_list = [table_column_dict['pm'], table_column_dict['nox'], table_column_dict['so2']]
 
         if mode is not None:
@@ -401,6 +402,10 @@ def screen_filter(company_dict, table_column_dict, out_dir, out_version, mode=No
 
         
 def compute_inventory(company_dict, table_column_dict, out_dir, out_version):
+    def is_unique(sr):
+        a = sr.to_numpy()
+        return (a[0]==a).all()
+
     print(f'Start compute output inventory!')
     '''
     按照计算公式计算
@@ -411,23 +416,28 @@ def compute_inventory(company_dict, table_column_dict, out_dir, out_version):
         df = value[1]
 
         df[table_column_dict['year_burning']]=value[0]['year_burning']
-
+        df['burn_type_factor'] = df['burn_type_factor'].mean()
+        assert(is_unique(df['burn_type_factor']))
         total_flow = df[table_column_dict['flow']].sum()
         df[table_column_dict['hour_burn']]=df[table_column_dict['flow']]*value[0]['year_burning']/total_flow
 
         df[table_column_dict['out_pm_concentration']]=df[table_column_dict['pm']]/df[table_column_dict['flow']]
 
-        df[table_column_dict['out_pm']]=df[table_column_dict['hour_burn']] * value[0]['theory_smoke'] * (df['pm_by_factor']/df[table_column_dict['flow']])
+        # df[table_column_dict['out_pm']]=df[table_column_dict['hour_burn']] * value[0]['theory_smoke'] * (df['pm_by_factor']/df[table_column_dict['flow']])
+        df[table_column_dict['out_pm']]=df[table_column_dict['hour_burn']] * value[0]['theory_smoke'] * (df[table_column_dict['pm']]*df['burn_type_factor']/df[table_column_dict['flow']])
         
         df[table_column_dict['out_so2_concentration']]=df[table_column_dict['so2']]/df[table_column_dict['flow']]
 
-        df[table_column_dict['out_so2']]=df[table_column_dict['hour_burn']] * value[0]['theory_smoke'] * (df['so2_by_factor']/df[table_column_dict['flow']])
+        # df[table_column_dict['out_so2']]=df[table_column_dict['hour_burn']] * value[0]['theory_smoke'] * (df['so2_by_factor']/df[table_column_dict['flow']])
+        df[table_column_dict['out_so2']]=df[table_column_dict['hour_burn']] * value[0]['theory_smoke'] * (df[table_column_dict['so2']]*df['burn_type_factor']/df[table_column_dict['flow']])
 
         df[table_column_dict['out_nox_concentration']]=df[table_column_dict['nox']]/df[table_column_dict['flow']]
 
-        df[table_column_dict['out_nox']]=df[table_column_dict['hour_burn']] * value[0]['theory_smoke'] * (df['nox_by_factor']/df[table_column_dict['flow']])
+        # df[table_column_dict['out_nox']]=df[table_column_dict['hour_burn']] * value[0]['theory_smoke'] * (df['nox_by_factor']/df[table_column_dict['flow']])
+        df[table_column_dict['out_nox']]=df[table_column_dict['hour_burn']] * value[0]['theory_smoke'] * (df[table_column_dict['nox']]*df['burn_type_factor']/df[table_column_dict['flow']])
 
-        df.drop(columns=['pm_by_factor', 'so2_by_factor', 'nox_by_factor'], inplace=True)
+        # df.drop(columns=['pm_by_factor', 'so2_by_factor', 'nox_by_factor'], inplace=True)
+        df.drop(columns=['burn_type_factor'], inplace=True)
 
         df_time_month = df[table_column_dict['monitor_time']].dt.month.astype(int).values
 
@@ -641,6 +651,7 @@ def main(args):
             'pm_by_factor' = 'pm' * factor
             'so2_by_factor' = 'so2' * factor
             'nox_by_factor' = 'nox' * factor
+            不用by_factor了，后续还原burn_factor
             '''
             # subdf['burn_type_factor']=subdf[table_column_dict['fuel_type']].apply(lambda x: burn_type_dict[x])
             subdf['burn_type_factor'] = float(burn_type_dict[smoke_burning_dict['fuel_type']])
@@ -656,6 +667,7 @@ def main(args):
             '''
             # subdf.drop(columns=[table_column_dict['company_name'],table_column_dict['theory_smoke'],table_column_dict['fuel_type'], 'burn_type_factor'], inplace=True)
             subdf.drop(columns=[table_column_dict['company_name'], 'burn_type_factor'], inplace=True)
+
                        
            
             subdf[table_column_dict['monitor_time']] = subdf[table_column_dict['monitor_time']].apply(
@@ -679,6 +691,8 @@ def main(args):
                 subdf = subdf.rename(columns={'index':table_column_dict['monitor_time']})
 
                 subdf[table_column_dict['monitor_time']] = pd.to_datetime(subdf[table_column_dict['monitor_time']], format=time_format)
+            subdf['burn_type_factor'] = subdf['pm_by_factor']/subdf[table_column_dict['pm']]
+            subdf.drop(columns=['pm_by_factor', 'so2_by_factor', 'nox_by_factor'], inplace=True)
 
             # subdf[table_column_dict['monitor_time']] = subdf[table_column_dict['monitor_time']].dt.strftime(time_format)
 

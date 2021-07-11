@@ -27,8 +27,7 @@
         "emi_nox_low":"NOx最低浓度（mg/m3)",
         "emi_pm_high":"PM最高浓度（mg/m3)",
         "emi_pm_low":"PM最低浓度（mg/m3)",
-        "use_limitation":true,
-        "use_95_filter":false
+        "use_limitation":true
     },
     "burn_type_dict":{
         "煤":1000,
@@ -37,11 +36,9 @@
         "天然气":10000,
         "柴油":1000
     },
-    "smallest_per":0.025,
-    "largest_per":0.975,
     "exception_name_list":["无","VALUE", "NUFF"],
-    "out_dir":"./after_manage/2017ue/",
-    "out_version":"",
+    "out_dir":"./after_manage/2017_1_0u/",
+    "out_version":"1_0",
     "use_total_empty_month":true,
     "start_time_list":["2017-01-01 00:00:00", "2017-04-01 00:00:00", "2017-07-01 00:00:00", "2017-10-01 00:00:00"],
     "end_time_list":["2017-03-31 23:00:00", "2017-06-30 23:00:00", "2017-9-30 23:00:00", "2017-12-31 23:00:00"],

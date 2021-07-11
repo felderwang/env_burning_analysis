@@ -28,8 +28,8 @@ def parse_args():
                         help='0: load from json, 1:auto load(this will spend a lot of time!)')
     parser.add_argument('--json_name', type=str,
                         default='./jsons/datas2017.json', help='json file from loading')
-    parser.add_argument('--l_per', type=int, default=0.975, help='largest_per for filter')
-    parser.add_argument('--s_per', type=int, default=0.025, help='smallest_per for filter')
+    # parser.add_argument('--l_per', type=int, default=0.975, help='largest_per for filter')
+    # parser.add_argument('--s_per', type=int, default=0.025, help='smallest_per for filter')
 
     args = parser.parse_args()
 
@@ -65,7 +65,7 @@ def draw_distribution(data, company_name, column_name, divide_times=10):
     plt.title(final_name)
     fig.savefig('./pics/'+final_name+'.png')
 
-def merge_company_list(prev_company_list, cur_company_list, mode=0):
+def merge_company_list(prev_company_list, cur_company_list, table_column_dict,mode=0):
     '''
     if prev_theory_smoke != cur_theory_smoke:
         if mode=0:
@@ -97,7 +97,10 @@ def merge_company_list(prev_company_list, cur_company_list, mode=0):
     ret_df = pd.concat(
         [prev_company_list[1], cur_company_list[1]]).reset_index(drop=True)
     if len(prev_company_list)>2 and len(cur_company_list)>2:
-        ret_company_list = [ret_company_dic, ret_df, cur_company_list[2], cur_company_list[3]]
+        if table_column_dict['use_limitation']:
+            ret_company_list = [ret_company_dic, ret_df, cur_company_list[2], cur_company_list[3]]
+        else:
+            ret_company_list = [ret_company_dic, ret_df, cur_company_list[2]]
     else:
         ret_company_list = [ret_company_dic, ret_df]
 
@@ -177,7 +180,7 @@ def screen_filter(company_dict, table_column_dict, out_dir, out_version, mode=No
             elimate2 = 0
             total = len(df.index)
         return df, elimate1, elimate2, total
-    def filter_sr(sr, smallest_per, largest_per, use_limit=False, limitation=None, interval_confidence=None):
+    def filter_sr(sr, smallest_per, largest_per, table_column_dict,use_limit=False, limitation=None, interval_confidence=None):
         # print(f'smallest_per:{smallest_per}, largest_per:{largest_per}')
         if interval_confidence is None:
             q_low = sr[sr>0].quantile(smallest_per).item()
@@ -190,23 +193,31 @@ def screen_filter(company_dict, table_column_dict, out_dir, out_version, mode=No
             h = se * st.ppf((1+interval_confidence)/2.0, n-1)
             q_low = m-h
             q_high = m+h
-        # print(f'interval:{interval_confidence}, q_low:{q_low}, q_high:{q_high}')
+        # print(f'interval:{interval_confidence}, q_low:{q_low}, q_high:{q_high}, limitation:{limitation}')
 
         if use_limit:
             low_sr2 = sr.loc[(sr<q_low) & (sr <limitation[0]) & (sr!=0)]
             high_sr2 = sr.loc[(sr>q_high) & (sr>limitation[1])]
 
-            low_sr = sr.loc[(sr<q_low) & (sr!=0)]
-            high_sr = sr.loc[(sr>q_high)]
+            # low_sr = sr.loc[(sr<q_low) & (sr!=0)]
+            # high_sr = sr.loc[(sr>q_high)]
+            low_sr = sr.loc[(sr<limitation[0]) & (sr!=0)]
+            high_sr = sr.loc[(sr>limitation[1])]
 
             zero_sr = sr.loc[sr==0]
+            if table_column_dict['use_95_filter']:
+                sr.mask((sr<q_low) & (sr<limitation[0]), other=0.0, inplace=True)
+                sr.mask((sr>q_high) & (sr>limitation[1]), other=0.0, inplace=True)
+            else:
+                sr.mask((sr<limitation[0]), other=0.0, inplace=True)
+                sr.mask((sr>limitation[1]), other=0.0, inplace=True)
 
-            sr.mask((sr<q_low) & (sr<limitation[0]), other=0.0, inplace=True)
-            sr.mask((sr>q_high) & (sr>limitation[1]), other=0.0, inplace=True)
-
-            e1 = len(low_sr.index)+len(high_sr.index)
-            e2 = len(low_sr2.index)+len(high_sr2.index)
-            tl = len(sr.index) - len(zero_sr.index)
+            # e1 = len(low_sr.index)+len(high_sr.index)
+            # e2 = len(low_sr2.index)+len(high_sr2.index)
+            # tl = len(sr.index) - len(zero_sr.index)
+            e1 = len(low_sr.index)+len(high_sr.index)+len(zero_sr.index)
+            e2 = len(low_sr2.index)+len(high_sr2.index)+len(zero_sr.index)
+            tl = len(sr.index)
             # print(f'use_limit:low_sr.in{len(low_sr.index)}, high_sr.in:{len(high_sr.index)}, low_sr2.in:{len(low_sr2.index)}, high_sr2.in:{len(high_sr2.index)}, sr.in:{len(sr.index)}, zero:{len(zero_sr.index)}, e1:{e1}, e2:{e2}, tl:{tl}')
         else:
             low_sr = sr.loc[(sr<q_low) & (sr!=0)]
@@ -216,9 +227,12 @@ def screen_filter(company_dict, table_column_dict, out_dir, out_version, mode=No
             sr.mask((sr<q_low), other=0.0, inplace=True)
             sr.mask((sr>q_high), other=0.0, inplace=True)
 
-            e1 = len(low_sr.index)+len(high_sr.index)
-            e2 = 0
-            tl = len(sr.index) - len(zero_sr.index)
+            # e1 = len(low_sr.index)+len(high_sr.index)
+            # e2 = 0
+            # tl = len(sr.index) - len(zero_sr.index)
+            e1 = 0
+            e2 = len(low_sr.index)+len(high_sr.index)+len(zero_sr.index)
+            tl = len(sr.index)
         
         return sr, e1, e2, tl
     def get_limitation_name(input_category, category_list=['pm','nox','so2'], em_limit_module=['emi_{}_low', 'emi_{}_high']):
@@ -270,7 +284,7 @@ def screen_filter(company_dict, table_column_dict, out_dir, out_version, mode=No
                         sub_df = df.loc[(df['year']==year) & (df['month']==month)].copy()
                         # flow
                         # print(f'comp:{key}, year:{year}, month:{month}')
-                        sr, e1, e2, tl = filter_sr(sub_df[table_column_dict['flow']].copy(), smallest_per, largest_per, interval_confidence=interval_confidence)
+                        sr, e1, e2, tl = filter_sr(sub_df[table_column_dict['flow']].copy(), smallest_per, largest_per, table_column_dict,use_limit=False, interval_confidence=interval_confidence)
                         df.loc[(df['year']==year) & (df['month']==month), table_column_dict['flow']] = sr
                         # print(f'year:{type(year)}, {year}, month:{type(month)}, {month}')
                         time_stamp = pd.to_datetime(str(year.item())+str(month.item()).zfill(2), format='%Y%m', errors='ignore')
@@ -284,10 +298,10 @@ def screen_filter(company_dict, table_column_dict, out_dir, out_version, mode=No
                                 em_limitation = [value[3][item] for item in limitation_list]
                                 has_limit_flag = value[3]['has_limit']
                                 # print(f'comp:{key}, em_limitation:{em_limitation}')
-                                sr, e1, e2, tl = filter_sr(sub_df[column].copy(), smallest_per, largest_per, use_limit=True, limitation=em_limitation, interval_confidence=interval_confidence)
+                                sr, e1, e2, tl = filter_sr(sub_df[column].copy(), smallest_per, largest_per, table_column_dict,  use_limit=True, limitation=em_limitation, interval_confidence=interval_confidence)
 
                             else:
-                                sr, e1, e2, tl = filter_sr(sub_df[column].copy(), smallest_per, largest_per, use_limit=False, limitation=[0.0, 1e10], interval_confidence=interval_confidence)
+                                sr, e1, e2, tl = filter_sr(sub_df[column].copy(), smallest_per, largest_per, table_column_dict, use_limit=True, limitation=[0.0, 1e16], interval_confidence=interval_confidence)
                             df.loc[(df['year']==year) & (df['month']==month), column] = sr
                             
                             time_stamp = pd.to_datetime(str(year.item())+str(month.item()).zfill(2), format='%Y%m', errors='ignore')
@@ -352,10 +366,10 @@ def screen_filter(company_dict, table_column_dict, out_dir, out_version, mode=No
                     sub_year_filter_df = pd.concat([sub_year_filter_df, local_year_filter_df], axis=1)
                 
                 # print(f's_m_f:{sub_month_filter_df},\n s_y_f:{sub_year_filter_df}')
-            sub_month_filter_df.insert(0,'company_name', key)
+            sub_month_filter_df.insert(0,table_column_dict['company_name'], key)
             # sub_month_filter_df.insert(-1, 'use_limit', str(ret_dict['has_limit']))
             sub_month_filter_df.loc[:,'use_limit'] = str(ret_dict['has_limit'])
-            sub_year_filter_df.insert(0, 'company_name', key)
+            sub_year_filter_df.insert(0, table_column_dict['company_name'], key)
             # sub_year_filter_df.insert(-1, 'use_limit', str(ret_dict['has_limit']))
             sub_year_filter_df.loc[:,'use_limit'] = str(ret_dict['has_limit'])
             
@@ -450,7 +464,7 @@ def compute_inventory(company_dict, table_column_dict, out_dir, out_version):
         df = df.append(df_sum, ignore_index=True)
         df_sum = df_sum.append(pd.Series(missing_month_str, index=['missing_month']))
         df_sum = df_sum.to_frame().T
-        df_sum.insert(0, 'company_name', key)
+        df_sum.insert(0, table_column_dict['company_name'], key)
         if total_sum_df is None:
             total_sum_df = df_sum
         else:
@@ -496,10 +510,16 @@ def main(args):
     end_time_list = json_file['end_time_list']
     time_format = json_file['time_format']
     time_freq = json_file['time_freq']
+    smallest_per = json_file['smallest_per']
+    largest_per = json_file['largest_per']
     if use_total_empty_month:
-        out_version += 'use_empty'
+        out_version += '_use_empty'
     else:
-        out_version += 'no_empty'
+        out_version += '_no_empty'
+    if table_column_dict['use_95_filter']:
+        out_version += '_e2'
+    else:
+        out_version += 'e1'
     if not os.path.exists(out_dir):
         os.mkdir(out_dir)
     # print(f'file_list:{file_list}, out_dir:{out_dir}, out_version:{out_version}')
@@ -677,9 +697,9 @@ def main(args):
                 company_dict[company_name] = company_list
             else:
                 company_dict[company_name] = merge_company_list(
-                    company_dict[company_name], company_list)
+                    company_dict[company_name], company_list, table_column_dict)
     # 清洗与填补
-    screen_filter(company_dict, table_column_dict, out_dir, out_version, mode=0, largest_per=args.l_per, smallest_per=args.s_per, interval_confidence=None)
+    screen_filter(company_dict, table_column_dict, out_dir, out_version, mode=0, largest_per=largest_per, smallest_per=smallest_per, interval_confidence=None)
 
     # 计算与生成处理后文件
     compute_inventory(company_dict, table_column_dict, out_dir, out_version)

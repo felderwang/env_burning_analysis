@@ -37,10 +37,11 @@
         "天然气":10000,
         "柴油":1000
     },
+    "emi_factor":1e-6,
     "smallest_per":0.025,
     "largest_per":0.975,
     "exception_name_list":["无","VALUE", "NUFF"],
-    "out_dir":"./after_manage/prac2017/",
+    "out_dir":"./after_manage/2017ue1/",
     "out_version":"",
     "use_total_empty_month":true,
     "start_time_list":["2017-01-01 00:00:00", "2017-04-01 00:00:00", "2017-07-01 00:00:00", "2017-10-01 00:00:00"],

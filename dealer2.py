@@ -65,32 +65,45 @@ def draw_distribution(data, company_name, column_name, divide_times=10):
     plt.title(final_name)
     fig.savefig('./pics/'+final_name+'.png')
 
-def linear_inter(np_sr, category, table_column_dict):
-        '''
-        这部分是使用置信区间筛选，由于数据分布问题，未采用。
-        new_np = np_sr[np_sr!=0]
-        low, high = mean_confidence_interval(new_np)
-        new_np[new_np<low]=0
-        new_np[new_np>high]=0
-        total_size = np.size(new_np)
-        in_confidence_size = np.size(new_np[new_np!=0])
-        print(f'count {column} : {in_confidence_size} / {total_size} = {(in_confidence_size/total_size*100):.3f} %')
-        '''
-        '''
-        线性插值
-        '''
-        # np_sr = df[column].to_numpy()
-        np_sr[np_sr<0.0] = 0.0
-        inter_array = np.arange(len(np_sr))
-        if np_sr[0]==0:
-            # inter_sr = np.interp(inter_array, np.concatenate((np.array([0]),inter_array[np_sr!=0])), np.concatenate((np.array([0]), np_sr[np_sr!=0]))) 
-            if category == table_column_dict['flow']:
-                np_sr[0] = 1
-            else:
-                np_sr[0] = 1e-5
-        inter_sr = np.interp(inter_array, inter_array[np_sr!=0], np_sr[np_sr!=0])
-        return inter_sr
-        
+# def linear_inter(np_sr, category, table_column_dict):
+#         '''
+#         这部分是使用置信区间筛选，由于数据分布问题，未采用。
+#         new_np = np_sr[np_sr!=0]
+#         low, high = mean_confidence_interval(new_np)
+#         new_np[new_np<low]=0
+#         new_np[new_np>high]=0
+#         total_size = np.size(new_np)
+#         in_confidence_size = np.size(new_np[new_np!=0])
+#         print(f'count {column} : {in_confidence_size} / {total_size} = {(in_confidence_size/total_size*100):.3f} %')
+#         '''
+#         '''
+#         线性插值
+#         '''
+#         # np_sr = df[column].to_numpy()
+#         np_sr[np_sr<0.0] = 0.0
+#         inter_array = np.arange(len(np_sr))
+#         if np_sr[0]==0:
+#             # inter_sr = np.interp(inter_array, np.concatenate((np.array([0]),inter_array[np_sr!=0])), np.concatenate((np.array([0]), np_sr[np_sr!=0]))) 
+#             if category == table_column_dict['flow']:
+#                 np_sr[0] = 1
+#             else:
+#                 np_sr[0] = 1e-5
+#         inter_sr = np.interp(inter_array, inter_array[np_sr>0], np_sr[np_sr>0])
+#         return inter_sr
+
+def linear_inter_sr(sr, is_flow=False):
+    np_sr = sr.to_numpy()
+    np_sr[np_sr<0.0] = 0.0
+    inter_array = np.arange(len(np_sr))
+    if np_sr[0]==0:
+        if is_flow:
+            np_sr[0] = 1
+        else:
+            np_sr[0] = 1e-5
+    
+    inter_sr = np.interp(inter_array, inter_array[np_sr!=0], np_sr[np_sr!=0])
+    return pd.Series(inter_sr)
+
 def merge_company_list(prev_company_list, cur_company_list, table_column_dict,mode=0):
     '''
     if prev_theory_smoke != cur_theory_smoke:
@@ -147,66 +160,37 @@ def screen_filter(company_dict, table_column_dict, out_dir, out_version, mode=No
     '''
     print(f'Start screen and filter!')
     
-    def filter_df(df, category, smallest_per, largest_per, use_limit=False, limitation=None):
-        
-
-        q_low = df[category][df[category]>0].quantile(smallest_per).item()
-        q_high = df[category][df[category]>0].quantile(1-largest_per).item()
-        # print(f'cat:{category}, q_low:{type(q_low)}, {q_low}, q_high:{type(q_high)}, {q_high}')
-        if use_limit:
-            # print(f'limit:{limitation}')
-            low_filtered_df2 = df[[category]][(df[category]<q_low) & (df[category]<limitation[0]) & (df[category]!=0)]
-            # print(f'low_:{low_filtered_df2}')
-            high_filtered_df2 = df[[category]][(df[category]>q_high) & df[category]>limitation[1]]
-
-            low_filtered_df = df[[category]][(df[category]<q_low) & df[category]!=0]
-            high_filtered_df = df[[category]][df[category]>q_high]
-            zero_df = df[[category]][df[category]==0]
-           
-            df[category].mask((df[category]<q_low) & df[category]<limitation[0], other=0.0, inplace=True)
-            df[category].mask((df[category]>q_high) & df[category]>limitation[1], other=0.0, inplace=True)
-
-            elimate1 = len(low_filtered_df.index)+len(high_filtered_df.index) - len(zero_df.index)
-            elimate2 = len(low_filtered_df2.index)+len(high_filtered_df2.index) - len(zero_df.index)
-            total = len(df.index)
-
-        else:
-            low_filtered_df = df[[category]][(df[category]<q_low) & df[category]!=0]
-            high_filtered_df = df[[category]][df[category]>q_high]
-            zero_df = df[[category]][df[category]==0]
-
-            df[category].mask(df[category]<q_low, other=0.0, inplace=True)
-            df[category].mask(df[category]>q_high, other=0.0, inplace=True)
-
-            elimate1 = len(low_filtered_df.index)+len(high_filtered_df.index) -len(zero_df.index)
-            elimate2 = 0
-            total = len(df.index)
-        return df, elimate1, elimate2, total
     def filter_sr(sr, smallest_per, largest_per, table_column_dict,use_limit=False, limitation=None, interval_confidence=None):
-        # print(f'smallest_per:{smallest_per}, largest_per:{largest_per}')
+        '''
+        e1 只用上下限，返回（上下限+异常值）/全部数据
+        e2 上下限+95%，返回（上下限+95%+异常值）/全部数据
+        异常值被赋成<0，原本数据中=0的不算异常值，一起算入95%
+        
+        '''
+        print(f'smallest_per:{smallest_per}, largest_per:{largest_per}')
         if interval_confidence is None:
-            q_low = sr[sr>0].quantile(smallest_per).item()
-            q_high = sr[sr>0].quantile(largest_per).item()
+            q_low = sr[sr>=0].quantile(smallest_per).item()
+            q_high = sr[sr>=0].quantile(largest_per).item()
             
         else:
             a = 1.0*np.array(sr)
             n = len(a)
-            m, se = np.mean(a), st.sem(a)
+            m, se = np.mean(a>=0), st.sem(a>=0)
             h = se * st.ppf((1+interval_confidence)/2.0, n-1)
             q_low = m-h
             q_high = m+h
-        # print(f'interval:{interval_confidence}, q_low:{q_low}, q_high:{q_high}, limitation:{limitation}')
+        print(f'interval:{interval_confidence}, q_low:{q_low}, q_high:{q_high}, limitation:{limitation}')
 
         if use_limit:
-            low_sr2 = sr.loc[(sr<q_low) & (sr <limitation[0]) & (sr!=0)]
+            low_sr2 = sr.loc[(sr<q_low) & (sr <limitation[0]) & (sr>=0)]
             high_sr2 = sr.loc[(sr>q_high) & (sr>limitation[1])]
 
             # low_sr = sr.loc[(sr<q_low) & (sr!=0)]
             # high_sr = sr.loc[(sr>q_high)]
-            low_sr = sr.loc[(sr<limitation[0]) & (sr!=0)]
+            low_sr = sr.loc[(sr<limitation[0]) & (sr>=0)]
             high_sr = sr.loc[(sr>limitation[1])]
 
-            zero_sr = sr.loc[sr==0]
+            zero_sr = sr.loc[sr<0]
             if table_column_dict['use_95_filter']:
                 sr.mask((sr<q_low) & (sr<limitation[0]), other=0.0, inplace=True)
                 sr.mask((sr>q_high) & (sr>limitation[1]), other=0.0, inplace=True)
@@ -220,11 +204,11 @@ def screen_filter(company_dict, table_column_dict, out_dir, out_version, mode=No
             e1 = len(low_sr.index)+len(high_sr.index)+len(zero_sr.index)
             e2 = len(low_sr2.index)+len(high_sr2.index)+len(zero_sr.index)
             tl = len(sr.index)
-            # print(f'use_limit:low_sr.in{len(low_sr.index)}, high_sr.in:{len(high_sr.index)}, low_sr2.in:{len(low_sr2.index)}, high_sr2.in:{len(high_sr2.index)}, sr.in:{len(sr.index)}, zero:{len(zero_sr.index)}, e1:{e1}, e2:{e2}, tl:{tl}')
+            print(f'use_limit:low_sr.in{len(low_sr.index)}, high_sr.in:{len(high_sr.index)}, low_sr2.in:{len(low_sr2.index)}, high_sr2.in:{len(high_sr2.index)}, sr.in:{len(sr.index)}, zero:{len(zero_sr.index)}, e1:{e1}, e2:{e2}, tl:{tl}')
         else:
-            low_sr = sr.loc[(sr<q_low) & (sr!=0)]
+            low_sr = sr.loc[(sr<q_low) & (sr>=0)]
             high_sr = sr.loc[(sr>q_high)]
-            zero_sr = sr.loc[sr==0]
+            zero_sr = sr.loc[sr<0]
 
             sr.mask((sr<q_low), other=0.0, inplace=True)
             sr.mask((sr>q_high), other=0.0, inplace=True)
@@ -237,6 +221,7 @@ def screen_filter(company_dict, table_column_dict, out_dir, out_version, mode=No
             tl = len(sr.index)
         
         return sr, e1, e2, tl
+
     def get_limitation_name(input_category, category_list=['pm','nox','so2'], em_limit_module=['emi_{}_low', 'emi_{}_high']):
         input_category = input_category.lower()
         # print(f'in_cat:{input_category}')
@@ -266,8 +251,9 @@ def screen_filter(company_dict, table_column_dict, out_dir, out_version, mode=No
         #     df[column] = pd.Series(inter_sr)
         # delete flow
         # column_list = [table_column_dict['pm'], table_column_dict['nox'], table_column_dict['so2'], 'pm_by_factor', 'nox_by_factor', 'so2_by_factor']
-        column_list = [table_column_dict['pm'], table_column_dict['nox'], table_column_dict['so2']]
-        filter_column_list = [table_column_dict['pm'], table_column_dict['nox'], table_column_dict['so2']]
+        # column_list = [table_column_dict['pm'], table_column_dict['nox'], table_column_dict['so2']]
+        # filter_column_list = [table_column_dict['pm'], table_column_dict['nox'], table_column_dict['so2']]
+        filter_column_list = [table_column_dict['out_pm_concentration'], table_column_dict['out_so2_concentration'], table_column_dict['out_so2_concentration']]
 
         if mode is not None:
             # def set_top_zero(sub_df, largest_per, smallest_per, column_list):
@@ -278,6 +264,9 @@ def screen_filter(company_dict, table_column_dict, out_dir, out_version, mode=No
             #         sub_df[column].mask(sub_df[column].isin(sub_df[column].nlargest(largest_numbers)), other=0, inplace=True)
             df['year'] = df[table_column_dict['monitor_time']].dt.year
             df['month'] = df[table_column_dict['monitor_time']].dt.month
+            df[table_column_dict['out_pm_concentration']] = df[table_column_dict['pm']]/df[table_column_dict['flow']]
+            df[table_column_dict['out_so2_concentration']]=df[table_column_dict['so2']]/df[table_column_dict['flow']]
+            df[table_column_dict['out_nox_concentration']]=df[table_column_dict['nox']]/df[table_column_dict['flow']]
             year_list = pd.unique(df['year'])
             month_list = pd.unique(df['month'])
             if mode == 0:
@@ -286,15 +275,16 @@ def screen_filter(company_dict, table_column_dict, out_dir, out_version, mode=No
                     for month in month_list:
                         sub_df = df.loc[(df['year']==year) & (df['month']==month)].copy()
                         # flow
-                        # print(f'comp:{key}, year:{year}, month:{month}')
+                        print(f'comp:{key}, year:{year}, month:{month}')
                         sr, e1, e2, tl = filter_sr(sub_df[table_column_dict['flow']].copy(), smallest_per, largest_per, table_column_dict,use_limit=False, interval_confidence=interval_confidence)
                         df.loc[(df['year']==year) & (df['month']==month), table_column_dict['flow']] = sr
                         # print(f'year:{type(year)}, {year}, month:{type(month)}, {month}')
                         time_stamp = pd.to_datetime(str(year.item())+str(month.item()).zfill(2), format='%Y%m', errors='ignore')
                         value[2].add(table_column_dict['flow'],time_stamp, e1, e2, tl)
 
-                        for column in column_list:
+                        for column in filter_column_list:
                             has_limit_flag = False
+                            print(f'category:{column}')
                             if table_column_dict['use_limitation'] and value[3]['has_limit']:
                                 limitation_list = get_limitation_name(column)
                                 # print(f'limitation_list:{limitation_list}')
@@ -385,10 +375,17 @@ def screen_filter(company_dict, table_column_dict, out_dir, out_version, mode=No
                 # print(f'm_m_f:{month_filter_df},\ny_y_f:{year_filter_df}')
             # print(f'month_f_Df:{month_filter_df}')
             # print(f'year_f_df:{year_filter_df}')
-        for column in column_list+[table_column_dict['flow']]:
-            np_sr = df[column].to_numpy()
-            inter_sr = linear_inter(np_sr, column, table_column_dict)
-            df[column] = pd.Series(inter_sr)
+        df[table_column_dict['flow']] = linear_inter_sr(df[table_column_dict['flow']], is_flow=True)
+        for column in filter_column_list:
+            # np_sr = df[column].to_numpy()
+            # inter_sr = linear_inter(np_sr, column, table_column_dict)
+            # df[column] = pd.Series(inter_sr)
+            try:
+                df[column] = linear_inter_sr(df[column], is_flow=False)
+            except ValueError:
+                print(f'key:{key}')
+                print(f'column:{column}, \ndf[c]:{df[column]}, \ndf:{df}')
+                assert(0)
         df.drop(columns=['year', 'month'], inplace=True)
         value[1] = df
     if table_column_dict['use_limitation']:
@@ -423,20 +420,23 @@ def compute_inventory(company_dict, table_column_dict, out_dir, out_version):
         total_flow = df[table_column_dict['flow']].sum()
         df[table_column_dict['hour_burn']]=df[table_column_dict['flow']]*value[0]['year_burning']/total_flow
 
-        df[table_column_dict['out_pm_concentration']]=df[table_column_dict['pm']]/df[table_column_dict['flow']]
+        # df[table_column_dict['out_pm_concentration']]=df[table_column_dict['pm']]/df[table_column_dict['flow']]
 
         # df[table_column_dict['out_pm']]=df[table_column_dict['hour_burn']] * value[0]['theory_smoke'] * (df['pm_by_factor']/df[table_column_dict['flow']])
-        df[table_column_dict['out_pm']]=df[table_column_dict['hour_burn']] * value[0]['theory_smoke'] * (df[table_column_dict['pm']]*df['burn_type_factor']/df[table_column_dict['flow']])
+        # df[table_column_dict['out_pm']]=df[table_column_dict['hour_burn']] * value[0]['theory_smoke'] * (df[table_column_dict['pm']]*df['burn_type_factor']/df[table_column_dict['flow']])
+        df[table_column_dict['out_pm']]=df[table_column_dict['hour_burn']] * value[0]['theory_smoke'] * df[table_column_dict['out_pm_concentration']]*df['burn_type_factor']
         
-        df[table_column_dict['out_so2_concentration']]=df[table_column_dict['so2']]/df[table_column_dict['flow']]
+        # df[table_column_dict['out_so2_concentration']]=df[table_column_dict['so2']]/df[table_column_dict['flow']]
 
         # df[table_column_dict['out_so2']]=df[table_column_dict['hour_burn']] * value[0]['theory_smoke'] * (df['so2_by_factor']/df[table_column_dict['flow']])
-        df[table_column_dict['out_so2']]=df[table_column_dict['hour_burn']] * value[0]['theory_smoke'] * (df[table_column_dict['so2']]*df['burn_type_factor']/df[table_column_dict['flow']])
+        # df[table_column_dict['out_so2']]=df[table_column_dict['hour_burn']] * value[0]['theory_smoke'] * (df[table_column_dict['so2']]*df['burn_type_factor']/df[table_column_dict['flow']])
+        df[table_column_dict['out_so2']]=df[table_column_dict['hour_burn']] * value[0]['theory_smoke'] * df[table_column_dict['out_so2_concentration']]*df['burn_type_factor']
 
-        df[table_column_dict['out_nox_concentration']]=df[table_column_dict['nox']]/df[table_column_dict['flow']]
+        # df[table_column_dict['out_nox_concentration']]=df[table_column_dict['nox']]/df[table_column_dict['flow']]
 
         # df[table_column_dict['out_nox']]=df[table_column_dict['hour_burn']] * value[0]['theory_smoke'] * (df['nox_by_factor']/df[table_column_dict['flow']])
-        df[table_column_dict['out_nox']]=df[table_column_dict['hour_burn']] * value[0]['theory_smoke'] * (df[table_column_dict['nox']]*df['burn_type_factor']/df[table_column_dict['flow']])
+        # df[table_column_dict['out_nox']]=df[table_column_dict['hour_burn']] * value[0]['theory_smoke'] * (df[table_column_dict['nox']]*df['burn_type_factor']/df[table_column_dict['flow']])
+        df[table_column_dict['out_nox']]=df[table_column_dict['hour_burn']] * value[0]['theory_smoke'] * df[table_column_dict['out_nox_concentration']]*df['burn_type_factor']
 
         # df.drop(columns=['pm_by_factor', 'so2_by_factor', 'nox_by_factor'], inplace=True)
         df.drop(columns=['burn_type_factor'], inplace=True)
@@ -489,6 +489,7 @@ def compute_inventory(company_dict, table_column_dict, out_dir, out_version):
         save_name = out_dir +str(key)+str(out_version)+'.xlsx'
         value[1].to_excel(save_name, index=None)
         print(f'output {save_name}')
+
     if table_column_dict['use_limitation']:
         total_sum_df_save_name = out_dir + 'total_sum_use_limit' + str(out_version)+'.xlsx'
     else:
@@ -522,6 +523,7 @@ def main(args):
     end_time_list = json_file['end_time_list']
     time_format = json_file['time_format']
     time_freq = json_file['time_freq']
+    emi_factor = json_file['emi_factor']
     smallest_per = json_file['smallest_per']
     largest_per = json_file['largest_per']
     if use_total_empty_month:
@@ -559,6 +561,12 @@ def main(args):
     company_dict 是一个字典，key 为 company_name。value 是一个 company_list，其中有两个元素。company_list[0] 为一个字典，记录理论烟气量与年燃烧量；company_list[1] 为 pandas.DataFrame，用于存放该公司相关数据。company_list[2] 为一个class，记录筛除元素数，并提供计算比例方法。company_list[3] 为筛选时上下限
 
     '''
+    '''
+        e1 只用上下限，返回（上下限+异常值）/全部数据
+        e2 上下限+95%，返回（上下限+95%+异常值）/全部数据
+        异常值被赋成<0，原本数据中=0的不算异常值，一起算入95%
+        
+    '''
     company_dict = {}
 
     print(f'reading burning info from:{company_burning_info_path}')
@@ -582,12 +590,12 @@ def main(args):
         for index, row in em_limit_total_df.iterrows():
             cp_name = row[table_column_dict['emi_company_name']]
             em_limit_dict ={
-                'emi_so2_high':float(row[table_column_dict['emi_so2_high']]),
-                'emi_so2_low':float(row[table_column_dict['emi_so2_low']]),
-                'emi_nox_high':float(row[table_column_dict['emi_nox_high']]),
-                'emi_nox_low':float(row[table_column_dict['emi_nox_low']]),
-                'emi_pm_high':float(row[table_column_dict['emi_pm_high']]),
-                'emi_pm_low' :float(row[table_column_dict['emi_pm_low']])
+                'emi_so2_high':float(row[table_column_dict['emi_so2_high']])*emi_factor,
+                'emi_so2_low':float(row[table_column_dict['emi_so2_low']])*emi_factor,
+                'emi_nox_high':float(row[table_column_dict['emi_nox_high']])*emi_factor,
+                'emi_nox_low':float(row[table_column_dict['emi_nox_low']])*emi_factor,
+                'emi_pm_high':float(row[table_column_dict['emi_pm_high']])*emi_factor,
+                'emi_pm_low' :float(row[table_column_dict['emi_pm_low']])*emi_factor
             }
             em_limit_dict_total[cp_name] = em_limit_dict
     # print(f'em_li_tl:{em_limit_dict_total}')
@@ -639,13 +647,26 @@ def main(args):
                 # subdf[table_column_dict['flow']] = subdf[table_column_dict['flow']].replace(flow_exception_name,float(0))
             # subdf[table_column_dict['flow']] = subdf[table_column_dict['flow']].astype(float)
             #nan, negative
-            abnormal_list=[table_column_dict['flow'], table_column_dict['pm'], table_column_dict['nox'], table_column_dict['so2']]
+            def deal_abnormal(sr, exception_name_list, other, is_flow=False):
+                sr.replace(exception_name_list, other, inplace=True)
+                sr = sr.astype(float)
+                sr.fillna(other, inplace=True)
+                # sr[sr<0.0] = other
+                if is_flow:
+                    sr[sr<0.0] = 0.0
+                return sr
+            
+            subdf[table_column_dict['flow']] = deal_abnormal(subdf[table_column_dict['flow']], exception_name_list, float(0), is_flow=True)
+            subdf[table_column_dict['flow']] = linear_inter_sr(subdf[table_column_dict['flow']], is_flow=True)
+            
+            abnormal_list=[table_column_dict['pm'], table_column_dict['nox'], table_column_dict['so2']]
             for abnormal_category in abnormal_list:
-                for exception_name in exception_name_list:
-                    subdf[abnormal_category] = subdf[abnormal_category].replace(exception_name, float(0))
-                subdf[abnormal_category] = subdf[abnormal_category].astype(float)
-                subdf[abnormal_category][subdf[abnormal_category]<0] = float(0)
-                subdf[abnormal_category] = subdf[abnormal_category].fillna(0)
+                subdf[abnormal_category] = deal_abnormal(subdf[abnormal_category], exception_name_list, float(-1))
+                # for exception_name in exception_name_list:
+                    # subdf[abnormal_category] = subdf[abnormal_category].replace(exception_name, float(0))
+                # subdf[abnormal_category] = subdf[abnormal_category].astype(float)
+                # subdf[abnormal_category][subdf[abnormal_category]<0] = float(0)
+                # subdf[abnormal_category] = subdf[abnormal_category].fillna(0)
 
 
             '''
@@ -683,6 +704,7 @@ def main(args):
                 lambda x: convert_num2time(x))
             
             subdf[table_column_dict['monitor_time']] = pd.to_datetime(subdf[table_column_dict['monitor_time']], format=time_format)
+
             if use_total_empty_month:
                 dateindex = pd.date_range(start_time_list[file_index], end_time_list[file_index], freq=time_freq)
 
@@ -693,6 +715,9 @@ def main(args):
                 subdf = subdf.rename(columns={'index':table_column_dict['monitor_time']})
 
                 subdf[table_column_dict['monitor_time']] = pd.to_datetime(subdf[table_column_dict['monitor_time']], format=time_format)
+            '''
+            去掉by_factor，重新获得burn_type_factor
+            '''
             subdf['burn_type_factor'] = subdf['pm_by_factor']/subdf[table_column_dict['pm']]
             subdf.drop(columns=['pm_by_factor', 'so2_by_factor', 'nox_by_factor'], inplace=True)
 

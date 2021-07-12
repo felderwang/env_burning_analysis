@@ -4,6 +4,7 @@
 
 /prac/*
 /__pycache__/*
+/logs/*
 #ignore rar
 *.rar
 

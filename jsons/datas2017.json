@@ -28,7 +28,7 @@
         "emi_pm_high":"PM最高浓度（mg/m3)",
         "emi_pm_low":"PM最低浓度（mg/m3)",
         "use_limitation":true,
-        "use_95_filter":false
+        "use_95_filter":true
     },
     "burn_type_dict":{
         "煤":1000,
@@ -40,8 +40,8 @@
     "emi_factor":1e-6,
     "smallest_per":0.025,
     "largest_per":0.975,
-    "exception_name_list":["无","VALUE", "NUFF"],
-    "out_dir":"./after_manage/2017ue1/",
+    "exception_name_list":["无","VALUE", "NUFF", "NULL"],
+    "out_dir":"./after_manage/2017ne2/",
     "out_version":"",
     "use_total_empty_month":true,
     "start_time_list":["2017-01-01 00:00:00", "2017-04-01 00:00:00", "2017-07-01 00:00:00", "2017-10-01 00:00:00"],

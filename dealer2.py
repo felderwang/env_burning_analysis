@@ -93,15 +93,19 @@ def draw_distribution(data, company_name, column_name, divide_times=10):
 
 def linear_inter_sr(sr, is_flow=False):
     np_sr = sr.to_numpy()
+    if np.count_nonzero(np_sr) == 0:
+        return pd.Series(np_sr)
+    # print(f'np_sr:{np_sr}')
     np_sr[np_sr<0.0] = 0.0
     inter_array = np.arange(len(np_sr))
-    if np_sr[0]==0:
-        if is_flow:
-            np_sr[0] = 1
-        else:
-            np_sr[0] = 1e-5
+    # if np_sr[0]==0:
+        # if is_flow:
+            # np_sr[0] = 1
+        # else:
+            # np_sr[0] = 1e-5
     
     inter_sr = np.interp(inter_array, inter_array[np_sr!=0], np_sr[np_sr!=0])
+    # print(f'inter_sr:{inter_sr}')
     return pd.Series(inter_sr)
 
 def merge_company_list(prev_company_list, cur_company_list, table_column_dict,mode=0):
@@ -239,6 +243,7 @@ def screen_filter(company_dict, table_column_dict, out_dir, out_version, mode=No
 
     for key, value in company_dict.items():
         df = value[1]
+        # print(df)
         sub_month_filter_df = None
         sub_year_filter_df = None
         # print(f'key：{key}\nvalue:{value}')
@@ -253,7 +258,7 @@ def screen_filter(company_dict, table_column_dict, out_dir, out_version, mode=No
         # column_list = [table_column_dict['pm'], table_column_dict['nox'], table_column_dict['so2'], 'pm_by_factor', 'nox_by_factor', 'so2_by_factor']
         # column_list = [table_column_dict['pm'], table_column_dict['nox'], table_column_dict['so2']]
         # filter_column_list = [table_column_dict['pm'], table_column_dict['nox'], table_column_dict['so2']]
-        filter_column_list = [table_column_dict['out_pm_concentration'], table_column_dict['out_so2_concentration'], table_column_dict['out_so2_concentration']]
+        filter_column_list = [table_column_dict['out_pm_concentration'], table_column_dict['out_so2_concentration'], table_column_dict['out_nox_concentration']]
 
         if mode is not None:
             # def set_top_zero(sub_df, largest_per, smallest_per, column_list):
@@ -265,8 +270,11 @@ def screen_filter(company_dict, table_column_dict, out_dir, out_version, mode=No
             df['year'] = df[table_column_dict['monitor_time']].dt.year
             df['month'] = df[table_column_dict['monitor_time']].dt.month
             df[table_column_dict['out_pm_concentration']] = df[table_column_dict['pm']]/df[table_column_dict['flow']]
+
             df[table_column_dict['out_so2_concentration']]=df[table_column_dict['so2']]/df[table_column_dict['flow']]
+
             df[table_column_dict['out_nox_concentration']]=df[table_column_dict['nox']]/df[table_column_dict['flow']]
+            # print(df)
             year_list = pd.unique(df['year'])
             month_list = pd.unique(df['month'])
             if mode == 0:
@@ -276,6 +284,8 @@ def screen_filter(company_dict, table_column_dict, out_dir, out_version, mode=No
                         sub_df = df.loc[(df['year']==year) & (df['month']==month)].copy()
                         # flow
                         print(f'comp:{key}, year:{year}, month:{month}')
+                        # print(sub_df)
+                        print(f'filter flow')
                         sr, e1, e2, tl = filter_sr(sub_df[table_column_dict['flow']].copy(), smallest_per, largest_per, table_column_dict,use_limit=False, interval_confidence=interval_confidence)
                         df.loc[(df['year']==year) & (df['month']==month), table_column_dict['flow']] = sr
                         # print(f'year:{type(year)}, {year}, month:{type(month)}, {month}')
@@ -291,15 +301,19 @@ def screen_filter(company_dict, table_column_dict, out_dir, out_version, mode=No
                                 em_limitation = [value[3][item] for item in limitation_list]
                                 has_limit_flag = value[3]['has_limit']
                                 # print(f'comp:{key}, em_limitation:{em_limitation}')
+                                print(f'filter column')
                                 sr, e1, e2, tl = filter_sr(sub_df[column].copy(), smallest_per, largest_per, table_column_dict,  use_limit=True, limitation=em_limitation, interval_confidence=interval_confidence)
 
                             else:
                                 sr, e1, e2, tl = filter_sr(sub_df[column].copy(), smallest_per, largest_per, table_column_dict, use_limit=True, limitation=[0.0, 1e16], interval_confidence=interval_confidence)
+                            # print(sr)
+                            
                             df.loc[(df['year']==year) & (df['month']==month), column] = sr
                             
                             time_stamp = pd.to_datetime(str(year.item())+str(month.item()).zfill(2), format='%Y%m', errors='ignore')
                             if column in filter_column_list:
                                 value[2].add(column, time_stamp, e1, e2, tl, has_limit_flag)
+                
 
 
                         # largest_numbers = int(len(sub_df.index)*largest_per)
@@ -387,6 +401,9 @@ def screen_filter(company_dict, table_column_dict, out_dir, out_version, mode=No
                 print(f'column:{column}, \ndf[c]:{df[column]}, \ndf:{df}')
                 assert(0)
         df.drop(columns=['year', 'month'], inplace=True)
+        df[table_column_dict['pm']] = df[table_column_dict['out_pm_concentration']]*df[table_column_dict['flow']]
+        df[table_column_dict['so2']] = df[table_column_dict['out_so2_concentration']]*df[table_column_dict['flow']]
+        df[table_column_dict['nox']] = df[table_column_dict['out_nox_concentration']]*df[table_column_dict['flow']]
         value[1] = df
     if table_column_dict['use_limitation']:
         month_save_name = out_dir+'month_filter_use_limit'+str(out_version)+'.xlsx'
@@ -415,8 +432,8 @@ def compute_inventory(company_dict, table_column_dict, out_dir, out_version):
         df = value[1]
 
         df[table_column_dict['year_burning']]=value[0]['year_burning']
-        df['burn_type_factor'] = df['burn_type_factor'].mean()
-        assert(is_unique(df['burn_type_factor']))
+        # df['burn_type_factor'] = df['burn_type_factor'].mean()
+        # assert(is_unique(df['burn_type_factor']))
         total_flow = df[table_column_dict['flow']].sum()
         df[table_column_dict['hour_burn']]=df[table_column_dict['flow']]*value[0]['year_burning']/total_flow
 
@@ -640,13 +657,7 @@ def main(args):
             #     'year_burning': float(subdf[table_column_dict['year_burning']][0]),
             #     'fuel_type':subdf[table_column_dict['fuel_type']][0],
             # }
-            '''
-            处理不正常的值
-            '''
-            # for flow_exception_name in flow_exception_name_list:
-                # subdf[table_column_dict['flow']] = subdf[table_column_dict['flow']].replace(flow_exception_name,float(0))
-            # subdf[table_column_dict['flow']] = subdf[table_column_dict['flow']].astype(float)
-            #nan, negative
+            
             def deal_abnormal(sr, exception_name_list, other, is_flow=False):
                 sr.replace(exception_name_list, other, inplace=True)
                 sr = sr.astype(float)
@@ -655,33 +666,13 @@ def main(args):
                 if is_flow:
                     sr[sr<0.0] = 0.0
                 return sr
-            
+                
             subdf[table_column_dict['flow']] = deal_abnormal(subdf[table_column_dict['flow']], exception_name_list, float(0), is_flow=True)
-            subdf[table_column_dict['flow']] = linear_inter_sr(subdf[table_column_dict['flow']], is_flow=True)
-            
+
             abnormal_list=[table_column_dict['pm'], table_column_dict['nox'], table_column_dict['so2']]
+
             for abnormal_category in abnormal_list:
                 subdf[abnormal_category] = deal_abnormal(subdf[abnormal_category], exception_name_list, float(-1))
-                # for exception_name in exception_name_list:
-                    # subdf[abnormal_category] = subdf[abnormal_category].replace(exception_name, float(0))
-                # subdf[abnormal_category] = subdf[abnormal_category].astype(float)
-                # subdf[abnormal_category][subdf[abnormal_category]<0] = float(0)
-                # subdf[abnormal_category] = subdf[abnormal_category].fillna(0)
-
-
-            '''
-            由于后续 groupby 操作，会把燃烧类型抹去，因此先根据燃烧类型，将乘了系数之后的污染物记录。
-            'pm_by_factor' = 'pm' * factor
-            'so2_by_factor' = 'so2' * factor
-            'nox_by_factor' = 'nox' * factor
-            不用by_factor了，后续还原burn_factor
-            '''
-            # subdf['burn_type_factor']=subdf[table_column_dict['fuel_type']].apply(lambda x: burn_type_dict[x])
-            subdf['burn_type_factor'] = float(burn_type_dict[smoke_burning_dict['fuel_type']])
-
-            subdf[['pm_by_factor', 'so2_by_factor', 'nox_by_factor']]=subdf[[table_column_dict['pm'], table_column_dict['so2'], table_column_dict['nox']]].multiply(subdf['burn_type_factor'], axis='index')
-
-            
 
             '''
             补上缺的时间
@@ -689,10 +680,10 @@ def main(args):
             由于时间的格式，不能直接 groupby，因此将其转换为数字形式的timestamp, 然后合并。合并完了再抓换回来。
             '''
             # subdf.drop(columns=[table_column_dict['company_name'],table_column_dict['theory_smoke'],table_column_dict['fuel_type'], 'burn_type_factor'], inplace=True)
-            subdf.drop(columns=[table_column_dict['company_name'], 'burn_type_factor'], inplace=True)
+            # subdf.drop(columns=[table_column_dict['company_name'], 'burn_type_factor'], inplace=True)
+            subdf.drop(columns=[table_column_dict['company_name']], inplace=True)
 
-                       
-           
+            # subdf[table_column_dict['flow']] = subdf[table_column_dict['flow']].astype(float)
             subdf[table_column_dict['monitor_time']] = subdf[table_column_dict['monitor_time']].apply(
                 lambda x: convert_time2num(x, time_format))
             
@@ -715,12 +706,39 @@ def main(args):
                 subdf = subdf.rename(columns={'index':table_column_dict['monitor_time']})
 
                 subdf[table_column_dict['monitor_time']] = pd.to_datetime(subdf[table_column_dict['monitor_time']], format=time_format)
+            
+            
             '''
-            去掉by_factor，重新获得burn_type_factor
+            处理不正常的值
             '''
-            subdf['burn_type_factor'] = subdf['pm_by_factor']/subdf[table_column_dict['pm']]
-            subdf.drop(columns=['pm_by_factor', 'so2_by_factor', 'nox_by_factor'], inplace=True)
+            # for flow_exception_name in flow_exception_name_list:
+                # subdf[table_column_dict['flow']] = subdf[table_column_dict['flow']].replace(flow_exception_name,float(0))
+            # subdf[table_column_dict['flow']] = subdf[table_column_dict['flow']].astype(float)
+            #nan, negative
+            
+            subdf[table_column_dict['flow']] = linear_inter_sr(subdf[table_column_dict['flow']], is_flow=True)
+            
+            
+                
+            '''
+            由于后续 groupby 操作，会把燃烧类型抹去，因此先根据燃烧类型，将乘了系数之后的污染物记录。
+            'pm_by_factor' = 'pm' * factor
+            'so2_by_factor' = 'so2' * factor
+            'nox_by_factor' = 'nox' * factor
+            不用by_factor了，后续还原burn_factor
+            '''
+            # subdf['burn_type_factor']=subdf[table_column_dict['fuel_type']].apply(lambda x: burn_type_dict[x])
+            subdf['burn_type_factor'] = float(burn_type_dict[smoke_burning_dict['fuel_type']])
 
+            # subdf[['pm_by_factor', 'so2_by_factor', 'nox_by_factor']]=subdf[[table_column_dict['pm'], table_column_dict['so2'], table_column_dict['nox']]].multiply(subdf['burn_type_factor'], axis='index')
+
+            # '''
+            # 去掉by_factor，重新获得burn_type_factor
+            # '''
+            # subdf['burn_type_factor'] = subdf['pm_by_factor']/subdf[table_column_dict['pm']]
+            # subdf['burn_type_factor'] = subdf['burn_type_factor'].mean()
+            # subdf.drop(columns=['pm_by_factor', 'so2_by_factor', 'nox_by_factor'], inplace=True)
+            # print(subdf)
             # subdf[table_column_dict['monitor_time']] = subdf[table_column_dict['monitor_time']].dt.strftime(time_format)
 
             '''
